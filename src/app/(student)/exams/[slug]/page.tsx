@@ -119,14 +119,12 @@ export default function ExamDetailPage({ params }: { params: { slug: string } })
                     <p className="font-semibold capitalize">{exam.difficulty}</p>
                   </div>
                 </div>
-                <Button 
-                  size="lg" 
-                  className="w-full md:w-auto"
-                  onClick={() => router.push(`/exam/${exam.id}`)}
+                <Link 
+                  href={`/exam/${exam.slug}/start`}
+                  className="px-8 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-bold"
                 >
-                  Start Exam
-                  <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
+                  Start Exam Now
+                </Link>
               </div>
             </CardContent>
           </Card>

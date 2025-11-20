@@ -34,26 +34,46 @@ export const authOptions: NextAuthOptions = {
 
       return true
     },
-    async session({ session, user }) {
-      if (session.user) {
-        session.user.id = user.id
-        
-        // Add role to session
+    async jwt({ token, user, account, profile, trigger, session }) {
+      // Initial sign in
+      if (user) {
+        token.id = user.id
+        token.role = user.role || 'student'
+        token.isBlocked = user.isBlocked || false
+      }
+      
+      // Fetch latest user data on each request
+      if (token.id) {
         const dbUser = await prisma.user.findUnique({
-          where: { id: user.id },
+          where: { id: token.id as string },
           select: { role: true, isBlocked: true },
         })
-
-        session.user.role = dbUser?.role || 'student'
-        session.user.isBlocked = dbUser?.isBlocked || false
+        
+        if (dbUser) {
+          token.role = dbUser.role
+          token.isBlocked = dbUser.isBlocked
+        }
+      }
+      
+      return token
+    },
+    async session({ session, user, token }) {
+      if (session.user) {
+        session.user.id = token.id as string
+        session.user.role = token.role as string
+        session.user.isBlocked = token.isBlocked as boolean
       }
       return session
     },
     async redirect({ url, baseUrl }) {
-      // After sign in, redirect based on role
-      if (url.startsWith('/')) return url
-      if (new URL(url).origin === baseUrl) return url
-      return baseUrl
+      // If the URL is a relative path, use it
+      if (url.startsWith('/')) return `${baseUrl}${url}`
+      
+      // If the URL's origin matches the base URL, use it
+      else if (new URL(url).origin === baseUrl) return url
+      
+      // Otherwise redirect to dashboard
+      return `${baseUrl}/dashboard`
     },
   },
   pages: {
@@ -61,7 +81,7 @@ export const authOptions: NextAuthOptions = {
     error: '/login',
   },
   session: {
-    strategy: 'database',
+    strategy: 'jwt', // Changed from 'database' to 'jwt'
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
   secret: process.env.NEXTAUTH_SECRET,

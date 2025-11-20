@@ -11,14 +11,15 @@ datasource db {
 // AUTHENTICATION MODELS
 // ============================================
 model User {
-  id          String    @id @default(cuid())
-  email       String    @unique
-  name        String?
-  image       String?
-  role        String    @default("student") // "student" | "admin"
-  isBlocked   Boolean   @default(false)
-  createdAt   DateTime  @default(now())
-  lastLoginAt DateTime?
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime?
+  name          String?
+  image         String?
+  role          String    @default("student") // "student" | "admin"
+  isBlocked     Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  lastLoginAt   DateTime?
   
   accounts    Account[]
   sessions    Session[]
@@ -74,6 +75,7 @@ model Subject {
   description String?
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
   
   topics        Topic[]
   exams         Exam[]
@@ -92,6 +94,7 @@ model Topic {
   isActive  Boolean  @default(true)
   sequence  Int      @default(0)
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   
   questions Question[]
   
@@ -99,20 +102,26 @@ model Topic {
   @@index([subjectId, isActive])
 }
 
+enum Difficulty {
+  easy
+  medium
+  hard
+}
+
 model Question {
-  id            String   @id @default(cuid())
-  statement     String   @db.Text
+  id            String     @id @default(cuid())
+  statement     String     @db.Text
   imageUrl      String?
   topicId       String
-  topic         Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
-  marks         Int      @default(1)
-  negativeMarks Float    @default(0.25)
-  explanation   String?  @db.Text
-  difficulty    String   @default("medium") // "easy" | "medium" | "hard"
-  isActive      Boolean  @default(true)
-  version       Int      @default(1)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  topic         Topic      @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  marks         Int        @default(1)
+  negativeMarks Float      @default(0.25)
+  explanation   String?    @db.Text
+  difficulty    Difficulty @default(medium)
+  isActive      Boolean    @default(true)
+  version       Int        @default(1)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
   
   options       Option[]
   examQuestions ExamQuestion[]
@@ -122,14 +131,15 @@ model Question {
 }
 
 model Option {
-  id         String  @id @default(cuid())
+  id         String   @id @default(cuid())
   questionId String
   question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
-  text       String  @db.Text
+  text       String   @db.Text
   imageUrl   String?
-  isCorrect  Boolean @default(false)
-  optionKey  String  // "A", "B", "C", "D"
+  isCorrect  Boolean  @default(false)
+  optionKey  String   // "A", "B", "C", "D"
   sequence   Int
+  createdAt  DateTime @default(now())
   
   @@index([questionId])
 }
@@ -138,27 +148,28 @@ model Option {
 // EXAM MODELS
 // ============================================
 model Exam {
-  id              String    @id @default(cuid())
+  id              String     @id @default(cuid())
   title           String
-  slug            String    @unique
-  description     String?   @db.Text
+  slug            String     @unique
+  description     String?    @db.Text
   thumbnail       String?
   subjectId       String
-  subject         Subject   @relation(fields: [subjectId], references: [id])
+  subject         Subject    @relation(fields: [subjectId], references: [id])
   durationMin     Int
   totalMarks      Int
   passingMarks    Int?
-  price           Int       // In paise (₹100 = 10000 paise)
-  isPaid          Boolean   @default(true)
-  isFree          Boolean   @default(false)
-  isPublished     Boolean   @default(false)
-  instructions    String?   @db.Text
-  allowReview     Boolean   @default(true)
-  randomizeOrder  Boolean   @default(true)
-  rating          Float     @default(0)
-  totalAttempts   Int       @default(0)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  price           Int        // In paise (₹100 = 10000 paise)
+  isPaid          Boolean    @default(true)
+  isFree          Boolean    @default(false)
+  isPublished     Boolean    @default(false)
+  instructions    String?    @db.Text
+  allowReview     Boolean    @default(true)
+  randomizeOrder  Boolean    @default(true)
+  difficulty      Difficulty @default(medium)
+  rating          Float      @default(0)
+  totalAttempts   Int        @default(0)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
   
   questions         ExamQuestion[]
   attempts          Attempt[]
@@ -179,9 +190,11 @@ model ExamQuestion {
   questionId String
   question   Question @relation(fields: [questionId], references: [id])
   sequence   Int
+  createdAt  DateTime @default(now())
   
   @@unique([examId, questionId])
   @@index([examId])
+  @@index([questionId])
 }
 
 // ============================================
@@ -294,24 +307,43 @@ model Attempt {
   user           User      @relation(fields: [userId], references: [id])
   examId         String
   exam           Exam      @relation(fields: [examId], references: [id])
+  
+  // Timing fields
   startedAt      DateTime  @default(now())
   submittedAt    DateTime?
+  expiresAt      DateTime  // ADD THIS
   timeSpentSec   Int       @default(0)
-  answers        Json      // [{questionId, selectedOption: "A", timeTaken: 45}]
+  
+  // Question tracking
+  totalQuestions Int       // ADD THIS
+  
+  // Answer storage
+  answers        Json      @default("{}")  // CHANGE from just Json
+  
+  // Scoring fields
+  correctAnswers Int       @default(0)     // REMOVE nullable (?)
+  wrongAnswers   Int       @default(0)     // REMOVE nullable (?)
+  unattempted    Int       @default(0)     // REMOVE nullable (?)
   score          Float?
-  correctAnswers Int?
-  wrongAnswers   Int?
-  unattempted    Int?
   percentage     Float?
-  status         String    @default("in_progress") // in_progress | completed | abandoned
+  
+  // Status tracking
+  status         String    @default("in_progress")
+  
+  // Anti-cheating
   ipAddress      String?
   tabSwitchCount Int       @default(0)
-  suspiciousFlags Json?    // [{type: "tab_switch", timestamp: "..."}]
+  suspiciousFlags Json?    @default("[]")  // CHANGE from just Json?
+  
+  // Metadata
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt      // ADD THIS
   
   leaderboardEntry LeaderboardEntry?
   
   @@index([userId, examId])
   @@index([status])
+  @@index([expiresAt])  // ADD THIS
 }
 
 model LeaderboardEntry {

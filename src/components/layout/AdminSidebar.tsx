@@ -12,6 +12,7 @@ import {
   Settings,
   FolderTree,
   ChevronRight,
+  Image, // Added for Images
 } from 'lucide-react';
 
 export function AdminSidebar() {
@@ -46,6 +47,11 @@ export function AdminSidebar() {
           href: '/admin/questions',
           icon: FileQuestion,
           badge: '2.5k',
+        },
+        {
+          label: 'Image Upload', // NEW: Added Images
+          href: '/admin/images',
+          icon: Image,
         },
         {
           label: 'Exam Management',

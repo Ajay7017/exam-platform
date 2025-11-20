@@ -9,10 +9,19 @@ export default withAuth(
     const isAdminPage = req.nextUrl.pathname.startsWith('/admin')
     const isDashboard = req.nextUrl.pathname.startsWith('/dashboard')
     const isExamPage = req.nextUrl.pathname.startsWith('/exam/')
+    const isProfilePage = req.nextUrl.pathname.startsWith('/profile')
+    const isResultsPage = req.nextUrl.pathname.startsWith('/results')
+    const isLeaderboardPage = req.nextUrl.pathname.startsWith('/leaderboard')
 
     // Redirect authenticated users away from login page
     if (isAuthPage && isAuth) {
-      return NextResponse.redirect(new URL('/dashboard', req.url))
+      const callbackUrl = req.nextUrl.searchParams.get('callbackUrl')
+      if (callbackUrl && callbackUrl !== '/login') {
+        return NextResponse.redirect(new URL(callbackUrl, req.url))
+      }
+      // Redirect to admin dashboard or student dashboard based on role
+      const redirectUrl = token.role === 'admin' ? '/admin/dashboard' : '/dashboard'
+      return NextResponse.redirect(new URL(redirectUrl, req.url))
     }
 
     // Check for blocked users
@@ -21,20 +30,33 @@ export default withAuth(
     }
 
     // Protect admin routes
-    if (isAdminPage && (!isAuth || token.role !== 'admin')) {
-      return NextResponse.redirect(new URL('/login', req.url))
+    if (isAdminPage) {
+      if (!isAuth) {
+        return NextResponse.redirect(new URL('/login?callbackUrl=/admin', req.url))
+      }
+      if (token.role !== 'admin') {
+        return NextResponse.redirect(new URL('/dashboard', req.url))
+      }
     }
 
     // Protect student routes
-    if ((isDashboard || isExamPage) && !isAuth) {
-      return NextResponse.redirect(new URL('/login', req.url))
+    if ((isDashboard || isExamPage || isProfilePage || isResultsPage || isLeaderboardPage) && !isAuth) {
+      const callbackUrl = encodeURIComponent(req.nextUrl.pathname)
+      return NextResponse.redirect(new URL(`/login?callbackUrl=${callbackUrl}`, req.url))
     }
 
     return NextResponse.next()
   },
   {
     callbacks: {
-      authorized: () => true, // Let middleware function handle authorization
+      authorized: ({ token }) => {
+        // Return true to allow the middleware function to run
+        // We handle all auth logic in the middleware function above
+        return true
+      },
+    },
+    pages: {
+      signIn: '/login',
     },
   }
 )
@@ -46,6 +68,7 @@ export const config = {
     '/exam/:path*',
     '/profile/:path*',
     '/results/:path*',
+    '/leaderboard/:path*',
     '/login',
   ],
 }

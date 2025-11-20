@@ -87,7 +87,7 @@ export function Navbar({ variant = 'marketing' }: NavbarProps) {
                   </div>
 
                   {/* Dashboard */}
-                  <Link href={session.user.role === 'admin' ? '/admin' : '/dashboard'}>
+                  <Link href={session.user.role === 'admin' ? '/admin/dashboard' : '/dashboard'}>
                     <Button variant="outline">Dashboard</Button>
                   </Link>
 
@@ -108,7 +108,7 @@ export function Navbar({ variant = 'marketing' }: NavbarProps) {
                     </Link>
                   </Button>
                   <Button asChild>
-                    <Link href="/signup">
+                    <Link href="/login">
                       <UserPlus className="mr-2 h-4 w-4" />
                       Sign Up
                     </Link>
@@ -195,7 +195,7 @@ export function Navbar({ variant = 'marketing' }: NavbarProps) {
                           </Link>
                         </Button>
                         <Button asChild>
-                          <Link href="/signup" onClick={() => setIsOpen(false)}>
+                          <Link href="/login" onClick={() => setIsOpen(false)}>
                             <UserPlus className="mr-2 h-4 w-4" />
                             Sign Up
                           </Link>

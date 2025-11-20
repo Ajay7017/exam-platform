@@ -1,101 +1,373 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Plus, Edit, Trash2, FolderTree } from 'lucide-react';
-import subjectsData from '@/data/subjects.json';
+'use client'
 
-export default function SubjectsPage() {
-  const { subjects } = subjectsData;
+import { useState, useEffect } from 'react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Switch } from '@/components/ui/switch'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { toast } from 'sonner'
+import { Pencil, Trash2, Plus, Loader2 } from 'lucide-react'
+
+interface Subject {
+  id: string
+  name: string
+  slug: string
+  description?: string
+  isActive: boolean
+  topicsCount: number
+  examsCount: number
+  createdAt: string
+}
+
+export default function AdminSubjectsPage() {
+  const [subjects, setSubjects] = useState<Subject[]>([])
+  const [loading, setLoading] = useState(true)
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [editingSubject, setEditingSubject] = useState<Subject | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+
+  // Form state
+  const [formData, setFormData] = useState({
+    name: '',
+    slug: '',
+    description: '',
+    isActive: true,
+  })
+
+  // Fetch subjects
+  const fetchSubjects = async () => {
+    try {
+      setLoading(true)
+      const response = await fetch('/api/admin/subjects')
+      if (!response.ok) throw new Error('Failed to fetch subjects')
+      const data = await response.json()
+      setSubjects(data)
+    } catch (error) {
+      console.error('Error fetching subjects:', error)
+      toast.error('Failed to load subjects')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchSubjects()
+  }, [])
+
+  // Auto-generate slug from name
+  const generateSlug = (name: string) => {
+    return name
+      .toLowerCase()
+      .trim()
+      .replace(/[^\w\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+  }
+
+  const handleNameChange = (name: string) => {
+    setFormData(prev => ({
+      ...prev,
+      name,
+      slug: generateSlug(name),
+    }))
+  }
+
+  // Open create dialog
+  const handleCreate = () => {
+    setEditingSubject(null)
+    setFormData({
+      name: '',
+      slug: '',
+      description: '',
+      isActive: true,
+    })
+    setIsDialogOpen(true)
+  }
+
+  // Open edit dialog
+  const handleEdit = (subject: Subject) => {
+    setEditingSubject(subject)
+    setFormData({
+      name: subject.name,
+      slug: subject.slug,
+      description: subject.description || '',
+      isActive: subject.isActive,
+    })
+    setIsDialogOpen(true)
+  }
+
+  // Submit form (create or update)
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSubmitting(true)
+
+    try {
+      const url = editingSubject
+        ? `/api/admin/subjects/${editingSubject.id}`
+        : '/api/admin/subjects'
+
+      const method = editingSubject ? 'PUT' : 'POST'
+
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to save subject')
+      }
+
+      const savedSubject = await response.json()
+
+      toast.success(
+        editingSubject
+          ? 'Subject updated successfully'
+          : 'Subject created successfully'
+      )
+
+      setIsDialogOpen(false)
+      fetchSubjects() // Refresh list
+    } catch (error: any) {
+      console.error('Error saving subject:', error)
+      toast.error(error.message || 'Failed to save subject')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // Delete subject
+  const handleDelete = async (subject: Subject) => {
+    if (subject.topicsCount > 0 || subject.examsCount > 0) {
+      toast.error(
+        `Cannot delete subject with ${subject.topicsCount} topics and ${subject.examsCount} exams`
+      )
+      return
+    }
+
+    if (!confirm(`Are you sure you want to delete "${subject.name}"?`)) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/admin/subjects/${subject.id}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to delete subject')
+      }
+
+      toast.success('Subject deleted successfully')
+      fetchSubjects()
+    } catch (error: any) {
+      console.error('Error deleting subject:', error)
+      toast.error(error.message || 'Failed to delete subject')
+    }
+  }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="p-8">
+      <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">
-            Subjects & Topics
-          </h1>
-          <p className="mt-2 text-gray-600">
-            Manage subjects and their topics
-          </p>
+          <h1 className="text-3xl font-bold">Subjects</h1>
+          <p className="text-gray-600 mt-1">Manage exam subjects</p>
         </div>
-        <Button>
-          <Plus className="mr-2 h-4 w-4" />
+        <Button onClick={handleCreate}>
+          <Plus className="w-4 h-4 mr-2" />
           Add Subject
         </Button>
       </div>
 
-      {/* Subjects Grid */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {subjects.map((subject) => (
-          <Card key={subject.id} className="hover:shadow-lg transition-shadow">
-            <CardHeader>
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="text-4xl">{subject.icon}</div>
-                  <div>
-                    <CardTitle className="text-lg">{subject.name}</CardTitle>
-                    <CardDescription>
-                      {subject.totalQuestions} questions
-                    </CardDescription>
-                  </div>
-                </div>
-                <div className="flex gap-1">
-                  <Button variant="ghost" size="icon">
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon">
-                    <Trash2 className="h-4 w-4 text-error-500" />
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="font-medium text-gray-700">Topics:</span>
-                  <span className="text-gray-600">{subject.topics.length}</span>
-                </div>
-                <div className="space-y-1">
-                  {subject.topics.slice(0, 3).map((topic) => (
-                    <div
-                      key={topic.id}
-                      className="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2 text-sm"
-                    >
-                      <div className="flex items-center gap-2">
-                        <FolderTree className="h-3 w-3 text-gray-400" />
-                        <span className="text-gray-700">{topic.name}</span>
-                      </div>
-                      <span className="text-xs text-gray-500">
-                        {topic.questionCount}
+      {loading ? (
+        <div className="flex justify-center items-center h-64">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      ) : (
+        <div className="bg-white rounded-lg border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Slug</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>Topics</TableHead>
+                <TableHead>Exams</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {subjects.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                    No subjects found. Create your first subject!
+                  </TableCell>
+                </TableRow>
+              ) : (
+                subjects.map(subject => (
+                  <TableRow key={subject.id}>
+                    <TableCell className="font-medium">{subject.name}</TableCell>
+                    <TableCell className="text-sm text-gray-600">
+                      {subject.slug}
+                    </TableCell>
+                    <TableCell className="text-sm text-gray-600 max-w-xs truncate">
+                      {subject.description || '-'}
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-sm">{subject.topicsCount}</span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-sm">{subject.examsCount}</span>
+                    </TableCell>
+                    <TableCell>
+                      <span
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          subject.isActive
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-gray-100 text-gray-800'
+                        }`}
+                      >
+                        {subject.isActive ? 'Active' : 'Inactive'}
                       </span>
-                    </div>
-                  ))}
-                  {subject.topics.length > 3 && (
-                    <button className="w-full text-center text-xs text-primary-500 hover:underline py-1">
-                      +{subject.topics.length - 3} more topics
-                    </button>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEdit(subject)}
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDelete(subject)}
+                          disabled={subject.topicsCount > 0 || subject.examsCount > 0}
+                        >
+                          <Trash2 className="w-4 h-4 text-red-600" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      )}
 
-      {/* Add New Subject Card */}
-      <Card className="border-2 border-dashed border-gray-300 hover:border-primary-500 transition-colors cursor-pointer">
-        <CardContent className="flex flex-col items-center justify-center py-12">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary-50 mb-4">
-            <Plus className="h-6 w-6 text-primary-500" />
-          </div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-1">
-            Add New Subject
-          </h3>
-          <p className="text-sm text-gray-600">
-            Create a new subject category
-          </p>
-        </CardContent>
-      </Card>
+      {/* Create/Edit Dialog */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {editingSubject ? 'Edit Subject' : 'Create Subject'}
+            </DialogTitle>
+            <DialogDescription>
+              {editingSubject
+                ? 'Update the subject details below'
+                : 'Add a new subject to your platform'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSubmit}>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Name *</Label>
+                <Input
+                  id="name"
+                  value={formData.name}
+                  onChange={e => handleNameChange(e.target.value)}
+                  placeholder="e.g., Computer Science"
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="slug">Slug *</Label>
+                <Input
+                  id="slug"
+                  value={formData.slug}
+                  onChange={e =>
+                    setFormData(prev => ({ ...prev, slug: e.target.value }))
+                  }
+                  placeholder="e.g., computer-science"
+                  required
+                />
+                <p className="text-xs text-gray-500">
+                  Auto-generated from name (lowercase, hyphenated)
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="description">Description</Label>
+                <Textarea
+                  id="description"
+                  value={formData.description}
+                  onChange={e =>
+                    setFormData(prev => ({ ...prev, description: e.target.value }))
+                  }
+                  placeholder="Brief description of the subject"
+                  rows={3}
+                />
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="isActive"
+                  checked={formData.isActive}
+                  onCheckedChange={checked =>
+                    setFormData(prev => ({ ...prev, isActive: checked }))
+                  }
+                />
+                <Label htmlFor="isActive">Active</Label>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsDialogOpen(false)}
+                disabled={submitting}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={submitting}>
+                {submitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>{editingSubject ? 'Update' : 'Create'}</>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
-  );
+  )
 }

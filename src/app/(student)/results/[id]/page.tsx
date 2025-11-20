@@ -1,4 +1,3 @@
-// src/app/(student)/results/[id]/page.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -6,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Download,
   Share2,
@@ -16,6 +16,7 @@ import {
   Clock,
   Trophy,
   TrendingUp,
+  AlertCircle,
 } from 'lucide-react';
 import {
   BarChart,
@@ -40,31 +41,71 @@ const COLORS = {
 export default function ResultPage() {
   const params = useParams();
   const router = useRouter();
-  const resultId = params.id as string;
+  const attemptId = params.id as string;
 
   const [result, setResult] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Load result from localStorage
-    const storedResults = JSON.parse(localStorage.getItem('exam-results') || '[]');
-    const foundResult = storedResults.find((r: any) => r.id === resultId);
-    
-    if (foundResult) {
-      setResult(foundResult);
-    }
-  }, [resultId]);
+    fetchResult();
+  }, [attemptId]);
 
-  if (!result) {
+  const fetchResult = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/attempts/${attemptId}/result`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to load results');
+      }
+
+      const data = await response.json();
+      setResult(data);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
     return (
       <div className="container mx-auto p-6">
-        <p>Loading result...</p>
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center space-y-4">
+            <RefreshCw className="w-8 h-8 animate-spin mx-auto text-primary" />
+            <p className="text-muted-foreground">Loading results...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !result) {
+    return (
+      <div className="container mx-auto p-6">
+        <Card className="border-red-200">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-3 text-red-600">
+              <AlertCircle className="w-5 h-5" />
+              <p>{error || 'Results not found'}</p>
+            </div>
+            <Button 
+              onClick={() => router.push('/dashboard')} 
+              className="mt-4"
+            >
+              Back to Dashboard
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
   const pieData = [
-    { name: 'Correct', value: result.correct },
-    { name: 'Wrong', value: result.wrong },
+    { name: 'Correct', value: result.correctAnswers },
+    { name: 'Wrong', value: result.wrongAnswers },
     { name: 'Unattempted', value: result.unattempted },
   ];
 
@@ -72,29 +113,27 @@ export default function ResultPage() {
     const hrs = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
-    return `${hrs}h ${mins}m ${secs}s`;
+    return hrs > 0 ? `${hrs}h ${mins}m ${secs}s` : `${mins}m ${secs}s`;
   };
+
+  const isPassed = result.percentage >= (result.passingMarks || 40);
 
   return (
     <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Exam Results</h1>
-          <p className="text-muted-foreground">{result.examTitle}</p>
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold">Exam Results</h1>
+            <Badge variant={isPassed ? 'default' : 'destructive'} className="text-sm">
+              {isPassed ? 'Passed' : 'Failed'}
+            </Badge>
+          </div>
+          <p className="text-muted-foreground mt-1">{result.examTitle}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm">
-            <Share2 className="w-4 h-4 mr-2" />
-            Share
-          </Button>
-          <Button variant="outline" size="sm">
-            <Download className="w-4 h-4 mr-2" />
-            Download PDF
-          </Button>
-          <Button size="sm" onClick={() => router.push('/exams')}>
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Take Another
+          <Button variant="outline" size="sm" onClick={() => router.push('/dashboard')}>
+            Dashboard
           </Button>
         </div>
       </div>
@@ -107,7 +146,7 @@ export default function ResultPage() {
               <p className="text-sm text-muted-foreground">Your Score</p>
               <div className="flex items-baseline gap-2">
                 <span className="text-5xl font-bold text-primary">
-                  {result.score.toFixed(2)}
+                  {result.score?.toFixed(2) || 0}
                 </span>
                 <span className="text-2xl text-muted-foreground">
                   / {result.totalMarks}
@@ -115,7 +154,7 @@ export default function ResultPage() {
               </div>
               <div className="flex items-center gap-2">
                 <Badge variant="secondary" className="text-lg px-3 py-1">
-                  {result.percentage.toFixed(2)}%
+                  {result.percentage?.toFixed(2) || 0}%
                 </Badge>
                 {result.percentage >= 80 && (
                   <Badge className="bg-green-600">Excellent</Badge>
@@ -135,17 +174,17 @@ export default function ResultPage() {
             <div className="text-right space-y-4">
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Clock className="w-4 h-4" />
-                <span>Time Taken: {formatTime(result.timeTaken)}</span>
+                <span>Time: {formatTime(result.timeSpent)}</span>
               </div>
               {result.rank && (
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Trophy className="w-4 h-4" />
-                  <span>Rank: #{result.rank}</span>
+                  <span>Rank: #{result.rank} / {result.totalAttempts}</span>
                 </div>
               )}
               <div className="flex items-center gap-2 text-muted-foreground">
                 <TrendingUp className="w-4 h-4" />
-                <span>Submitted: {new Date(result.submittedAt).toLocaleDateString()}</span>
+                <span>{new Date(result.submittedAt).toLocaleDateString()}</span>
               </div>
             </div>
           </div>
@@ -162,10 +201,7 @@ export default function ResultPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold text-green-600">{result.correct}</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              +{result.correct} marks
-            </p>
+            <p className="text-3xl font-bold text-green-600">{result.correctAnswers}</p>
           </CardContent>
         </Card>
 
@@ -177,10 +213,7 @@ export default function ResultPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold text-red-600">{result.wrong}</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              -{(result.wrong * 0.25).toFixed(2)} marks
-            </p>
+            <p className="text-3xl font-bold text-red-600">{result.wrongAnswers}</p>
           </CardContent>
         </Card>
 
@@ -193,93 +226,153 @@ export default function ResultPage() {
           </CardHeader>
           <CardContent>
             <p className="text-3xl font-bold text-gray-600">{result.unattempted}</p>
-            <p className="text-xs text-muted-foreground mt-1">0 marks</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Pie Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Answer Distribution</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={pieData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={(entry: any) => {
-                    const name = entry.name ?? '';
-                    const percent = typeof entry.percent === 'number' ? entry.percent : 0;
-                    return `${name}: ${(percent * 100).toFixed(0)}%`;
-                  }}
-                  outerRadius={100}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {pieData.map((entry, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={
-                        entry.name === 'Correct'
-                          ? COLORS.correct
-                          : entry.name === 'Wrong'
-                          ? COLORS.wrong
-                          : COLORS.unattempted
-                      }
-                    />
+      {/* Tabs */}
+      <Tabs defaultValue="summary" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="summary">Summary</TabsTrigger>
+          <TabsTrigger value="solutions">Solutions</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="summary" className="space-y-6">
+          {/* Charts */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Pie Chart */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Answer Distribution</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={(entry: any) => `${entry.name}: ${entry.value}`}
+                      outerRadius={100}
+                      fill="#8884d8"
+                      dataKey="value"
+                    >
+                      {pieData.map((entry, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={
+                            entry.name === 'Correct'
+                              ? COLORS.correct
+                              : entry.name === 'Wrong'
+                              ? COLORS.wrong
+                              : COLORS.unattempted
+                          }
+                        />
+                      ))}
+                    </Pie>
+                    <Legend />
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            {/* Topic-wise Performance */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Topic-wise Performance</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {result.topicWisePerformance?.map((topic: any) => (
+                    <div key={topic.topic} className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span className="font-medium">{topic.topic}</span>
+                        <span className="text-muted-foreground">
+                          {topic.correct}/{topic.total} ({topic.accuracy.toFixed(0)}%)
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div
+                          className="bg-primary h-2 rounded-full transition-all"
+                          style={{ width: `${topic.accuracy}%` }}
+                        />
+                      </div>
+                    </div>
                   ))}
-                </Pie>
-                <Legend />
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        {/* Comparison Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Performance Comparison</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart
-                data={[
-                  { name: 'Your Score', value: result.score },
-                  { name: 'Average', value: result.totalMarks * 0.6 },
-                  { name: 'Top Score', value: result.totalMarks * 0.95 },
-                ]}
-              >
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="value" fill="#3b82f6" />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Action Buttons */}
-      <Card>
-        <CardContent className="p-6">
-          <div className="flex items-center justify-center gap-4">
-            <Button variant="outline" onClick={() => router.push('/dashboard')}>
-              Back to Dashboard
-            </Button>
-            <Button onClick={() => router.push('/exams')}>
-              Practice More Exams
-            </Button>
+                </div>
+              </CardContent>
+            </Card>
           </div>
-        </CardContent>
-      </Card>
+        </TabsContent>
+
+        <TabsContent value="solutions" className="space-y-4">
+          {result.questionResults?.map((q: any, index: number) => (
+            <Card key={q.questionId} className="border-2">
+              <CardHeader>
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold">Question {index + 1}</span>
+                      {q.isCorrect ? (
+                        <CheckCircle className="w-5 h-5 text-green-600" />
+                      ) : q.yourAnswer ? (
+                        <XCircle className="w-5 h-5 text-red-600" />
+                      ) : (
+                        <Circle className="w-5 h-5 text-gray-400" />
+                      )}
+                    </div>
+                    <p className="mt-2">{q.statement}</p>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  {q.options?.map((opt: any) => (
+                    <div
+                      key={opt.key}
+                      className={`p-3 rounded-lg border-2 ${
+                        opt.isCorrect
+                          ? 'border-green-500 bg-green-50'
+                          : opt.key === q.yourAnswer && !q.isCorrect
+                          ? 'border-red-500 bg-red-50'
+                          : 'border-gray-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold">{opt.key}.</span>
+                        <span>{opt.text}</span>
+                        {opt.isCorrect && (
+                          <CheckCircle className="w-4 h-4 text-green-600 ml-auto" />
+                        )}
+                        {opt.key === q.yourAnswer && !q.isCorrect && (
+                          <XCircle className="w-4 h-4 text-red-600 ml-auto" />
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="pt-4 border-t space-y-2">
+                  <p className="text-sm text-muted-foreground">
+                    <strong>Your Answer:</strong> {q.yourAnswer || 'Not Attempted'}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    <strong>Correct Answer:</strong> {q.correctAnswer}
+                  </p>
+                  {q.explanation && (
+                    <div className="mt-3 p-3 bg-blue-50 rounded-lg">
+                      <p className="text-sm font-semibold text-blue-900">Explanation:</p>
+                      <p className="text-sm text-blue-800 mt-1">{q.explanation}</p>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
