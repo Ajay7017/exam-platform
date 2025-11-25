@@ -10,22 +10,22 @@ export async function GET(request: NextRequest) {
     await requireAdmin()
     
     const { searchParams } = new URL(request.url)
-    const filters = examFiltersSchema.parse({
-      page: searchParams.get('page'),
-      limit: searchParams.get('limit'),
-      subject: searchParams.get('subject'),
-      difficulty: searchParams.get('difficulty'),
-      search: searchParams.get('search'),
-      isPublished: searchParams.get('isPublished')
-    })
     
-    const { page, limit, subject, difficulty, search, isPublished } = filters
+    // Safely parse with defaults
+    const page = parseInt(searchParams.get('page') || '1')
+    const limit = parseInt(searchParams.get('limit') || '20')
+    const subjectSlug = searchParams.get('subject') || undefined
+    const difficulty = searchParams.get('difficulty') as 'easy' | 'medium' | 'hard' | undefined
+    const search = searchParams.get('search') || undefined
+    const isPublishedParam = searchParams.get('isPublished')
+    const isPublished = isPublishedParam === 'true' ? true : isPublishedParam === 'false' ? false : undefined
+    
     const skip = (page - 1) * limit
     
     const where: any = {}
     
-    if (subject) {
-      where.subject = { slug: subject }
+    if (subjectSlug) {
+      where.subject = { slug: subjectSlug }
     }
     
     if (difficulty) {
@@ -49,9 +49,7 @@ export async function GET(request: NextRequest) {
         skip,
         take: limit,
         include: {
-          subject: {
-            select: { id: true, name: true, slug: true }
-          },
+          subject: true,  // CHANGED: Simplified to just true
           _count: {
             select: {
               questions: true,
@@ -69,8 +67,9 @@ export async function GET(request: NextRequest) {
       id: exam.id,
       title: exam.title,
       slug: exam.slug,
-      subject: exam.subject,
-      thumbnail: exam.thumbnail,
+      subject: exam.subject?.name || 'Multi-Subject',  // CHANGED: Handle null
+      subjectSlug: exam.subject?.slug || 'multi-subject',  // CHANGED: Handle null
+      isMultiSubject: exam.isMultiSubject,  // ADDED
       duration: exam.durationMin,
       totalQuestions: exam._count.questions,
       totalMarks: exam.totalMarks,
@@ -99,6 +98,7 @@ export async function GET(request: NextRequest) {
     })
     
   } catch (error) {
+    console.error('GET /api/admin/exams error:', error)
     return handleApiError(error)
   }
 }
@@ -122,16 +122,18 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    // Verify subject exists
-    const subject = await prisma.subject.findUnique({
-      where: { id: validated.subjectId }
-    })
-    
-    if (!subject) {
-      return NextResponse.json(
-        { error: 'Subject not found' },
-        { status: 404 }
-      )
+    // Verify subject exists (only if single subject mode)
+    if (!validated.isMultiSubject && validated.subjectId) {
+      const subject = await prisma.subject.findUnique({
+        where: { id: validated.subjectId }
+      })
+      
+      if (!subject) {
+        return NextResponse.json(
+          { error: 'Subject not found' },
+          { status: 404 }
+        )
+      }
     }
     
     // Fetch questions to calculate total marks
@@ -151,57 +153,62 @@ export async function POST(request: NextRequest) {
     const totalMarks = questions.reduce((sum, q) => sum + q.marks, 0)
     
     // Create exam with questions
-    const exam = await prisma.exam.create({
-      data: {
-        title: validated.title,
-        slug: validated.slug,
-        subjectId: validated.subjectId,
-        durationMin: validated.durationMin,
-        totalMarks,
-        price: validated.price,
-        isFree: validated.isFree || validated.price === 0,
-        isPaid: validated.price > 0,
-        instructions: validated.instructions,
-        randomizeOrder: validated.randomizeOrder ?? false,
-        allowReview: validated.allowReview ?? true,
-        difficulty: validated.difficulty ?? 'medium',
-        thumbnail: validated.thumbnail,
-        isPublished: false,
-        questions: {
-          create: validated.questionIds.map((questionId, index) => ({
-            questionId,
-            sequence: index
-          }))
-        }
-      },
-      include: {
-        subject: {
-          select: { id: true, name: true, slug: true }
-        },
-        _count: {
-          select: { questions: true }
-        }
+
+const exam = await prisma.exam.create({
+  data: {
+    title: validated.title,
+    slug: validated.slug,
+    subjectId: validated.subjectId || null,
+    isMultiSubject: validated.isMultiSubject || false,
+    durationMin: validated.durationMin,
+    totalMarks,
+    price: validated.price,
+    isFree: validated.isFree || validated.price === 0,
+    isPaid: validated.price > 0,
+    instructions: validated.instructions,
+    randomizeOrder: validated.randomizeOrder ?? false,
+    allowReview: validated.allowReview ?? true,
+    difficulty: validated.difficulty ?? 'medium',
+    thumbnail: validated.thumbnail,
+    isPublished: false,
+    questions: {
+      create: validated.questionIds.map((questionId, index) => ({
+        questionId,
+        sequence: index
+      }))
+    }
+  },
+  include: {
+    ...(validated.subjectId && {
+      subject: {
+        select: { id: true, name: true, slug: true }
       }
-    })
-    
-    return NextResponse.json({
-      success: true,
-      message: 'Exam created successfully',
-      exam: {
-        id: exam.id,
-        title: exam.title,
-        slug: exam.slug,
-        subject: exam.subject,
-        duration: exam.durationMin,
-        totalQuestions: exam._count.questions,
-        totalMarks: exam.totalMarks,
-        difficulty: exam.difficulty,
-        price: exam.price,
-        isFree: exam.isFree,
-        isPublished: exam.isPublished,
-        createdAt: exam.createdAt.toISOString()
-      }
-    }, { status: 201 })
+    }),
+    _count: {
+      select: { questions: true }
+    }
+  }
+})
+
+return NextResponse.json({
+  success: true,
+  message: 'Exam created successfully',
+  exam: {
+    id: exam.id,
+    title: exam.title,
+    slug: exam.slug,
+    subject: exam.subject || null,
+    isMultiSubject: exam.isMultiSubject,
+    duration: exam.durationMin,
+    totalQuestions: exam._count.questions,
+    totalMarks: exam.totalMarks,
+    difficulty: exam.difficulty,
+    price: exam.price,
+    isFree: exam.isFree,
+    isPublished: exam.isPublished,
+    createdAt: exam.createdAt.toISOString()
+  }
+}, { status: 201 })
     
   } catch (error) {
     return handleApiError(error)

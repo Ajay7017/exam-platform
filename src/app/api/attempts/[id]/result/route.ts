@@ -28,6 +28,9 @@ export async function GET(
                   include: {
                     options: {
                       orderBy: { sequence: 'asc' }
+                    },
+                    topic: {
+                      select: { name: true }
                     }
                   }
                 }
@@ -78,6 +81,7 @@ export async function GET(
         questionId: question.id,
         statement: question.statement,
         imageUrl: question.imageUrl,
+        topic: question.topic.name, // FIX: Access topic.name
         options: question.options.map((opt) => ({
           key: opt.optionKey,
           text: opt.text,
@@ -89,18 +93,16 @@ export async function GET(
         isCorrect: userResponse?.selectedOption === correctOption?.optionKey,
         explanation: question.explanation,
         markedForReview: userResponse?.markedForReview || false,
+        marks: question.marks,
+        negativeMarks: question.negativeMarks,
       }
     })
 
     // Calculate topic-wise performance
-    const topicMap = new Map<
-      string,
-      { correct: number; wrong: number; total: number }
-    >()
+    const topicMap = new Map<string, { correct: number; wrong: number; total: number }>()
 
     questionResults.forEach((qr) => {
-      const examQuestion = attempt.exam.questions.find((eq) => eq.question.id === qr.questionId)
-      const topic = examQuestion?.question.topic || 'Other'
+      const topic = qr.topic || 'Other' // Use the topic we already extracted
 
       if (!topicMap.has(topic)) {
         topicMap.set(topic, { correct: 0, wrong: 0, total: 0 })
@@ -128,13 +130,20 @@ export async function GET(
       })
     )
 
+    // Calculate percentile
+    const percentile = totalAttempts > 0 && leaderboardEntry?.rank
+      ? ((totalAttempts - leaderboardEntry.rank + 1) / totalAttempts) * 100
+      : null
+
     return NextResponse.json({
       attemptId: attempt.id,
       examId: attempt.examId,
       examTitle: attempt.exam.title,
       score: attempt.score,
       totalMarks: attempt.exam.totalMarks,
+      passingMarks: attempt.exam.passingMarks || 40,
       percentage: attempt.percentage,
+      percentile,
       correctAnswers: attempt.correctAnswers,
       wrongAnswers: attempt.wrongAnswers,
       unattempted: attempt.unattempted,

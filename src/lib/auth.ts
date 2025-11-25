@@ -24,34 +24,83 @@ export const authOptions: NextAuthOptions = {
         return false
       }
 
-      // Update last login
+      // Get admin emails from environment
+      const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim()) || []
+      const isAdmin = adminEmails.includes(user.email)
+      const targetRole = isAdmin ? 'admin' : 'student'
+
+      // Update or create user with correct role
       if (existingUser) {
         await prisma.user.update({
           where: { id: existingUser.id },
-          data: { lastLoginAt: new Date() },
+          data: { 
+            lastLoginAt: new Date(),
+            role: targetRole, // Ensure role is correct
+          },
         })
       }
+      // Note: New users are created by PrismaAdapter, we'll fix role in jwt callback
 
       return true
     },
     async jwt({ token, user, account, profile, trigger, session }) {
+      // Get admin emails from environment
+      const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim()) || []
+      
       // Initial sign in
       if (user) {
         token.id = user.id
-        token.role = user.role || 'student'
-        token.isBlocked = user.isBlocked || false
+        token.email = user.email
+        
+        // Check if email is in admin list
+        const isAdmin = user.email ? adminEmails.includes(user.email) : false
+        const correctRole = isAdmin ? 'admin' : 'student'
+        
+        // Fetch user data including phone
+        const dbUser = await prisma.user.findUnique({
+          where: { id: user.id },
+          select: { role: true, isBlocked: true, phone: true }
+        })
+        
+        // Update role in database if it doesn't match
+        if (dbUser && dbUser.role !== correctRole) {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { role: correctRole },
+          })
+          token.role = correctRole
+        } else {
+          token.role = dbUser?.role || user.role || 'student'
+        }
+        
+        token.isBlocked = dbUser?.isBlocked || user.isBlocked || false
+        token.phone = dbUser?.phone || null // ✅ NEW: Add phone to token
       }
       
-      // Fetch latest user data on each request
-      if (token.id) {
+      // Fetch latest user data on subsequent requests
+      if (token.id && !user) {
         const dbUser = await prisma.user.findUnique({
           where: { id: token.id as string },
-          select: { role: true, isBlocked: true },
+          select: { role: true, isBlocked: true, email: true, phone: true }, // ✅ Added phone
         })
         
         if (dbUser) {
-          token.role = dbUser.role
+          // Re-check admin status in case env changed
+          const isAdmin = dbUser.email ? adminEmails.includes(dbUser.email) : false
+          const correctRole = isAdmin ? 'admin' : 'student'
+          
+          if (dbUser.role !== correctRole) {
+            await prisma.user.update({
+              where: { id: token.id as string },
+              data: { role: correctRole },
+            })
+            token.role = correctRole
+          } else {
+            token.role = dbUser.role
+          }
+          
           token.isBlocked = dbUser.isBlocked
+          token.phone = dbUser.phone || null // ✅ NEW: Update phone in token
         }
       }
       
@@ -62,6 +111,7 @@ export const authOptions: NextAuthOptions = {
         session.user.id = token.id as string
         session.user.role = token.role as string
         session.user.isBlocked = token.isBlocked as boolean
+        session.user.phone = token.phone as string | null // ✅ NEW: Add phone to session
       }
       return session
     },
@@ -72,8 +122,8 @@ export const authOptions: NextAuthOptions = {
       // If the URL's origin matches the base URL, use it
       else if (new URL(url).origin === baseUrl) return url
       
-      // Otherwise redirect to dashboard
-      return `${baseUrl}/dashboard`
+      // Redirect to a handler page that will check role
+      return `${baseUrl}/auth/redirect`
     },
   },
   pages: {
@@ -81,7 +131,7 @@ export const authOptions: NextAuthOptions = {
     error: '/login',
   },
   session: {
-    strategy: 'jwt', // Changed from 'database' to 'jwt'
+    strategy: 'jwt',
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
   secret: process.env.NEXTAUTH_SECRET,

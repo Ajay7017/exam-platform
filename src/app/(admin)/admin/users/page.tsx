@@ -1,6 +1,7 @@
+// src/app/(admin)/users/page.tsx
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,29 +21,72 @@ import {
   Edit,
   Trash2,
   Mail,
-  Phone,
   Calendar,
-  Filter,
+  Loader2,
 } from 'lucide-react';
-import usersData from '@/data/users.json';
+import { toast } from 'sonner'; // Assuming you have sonner or similar for toasts
+
+// Define the User type matching our API response
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  createdAt: string;
+  lastLoginAt: string | null;
+  examsTaken: number;
+}
 
 export default function UsersPage() {
-  const { users } = usersData;
+  const [users, setUsers] = useState<User[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Filter users
+  // Fetch Users from API
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const response = await fetch('/api/admin/users');
+        if (!response.ok) throw new Error('Failed to fetch users');
+        const data = await response.json();
+        setUsers(data.users);
+      } catch (error) {
+        console.error(error);
+        // Fallback or toast error here
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchUsers();
+  }, []);
+
+  // Filter users based on search
   const filteredUsers = users.filter(
     (user) =>
       user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       user.email.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // Calculate Stats
+  const totalStudents = users.filter((u) => u.role === 'student').length;
+  const totalAdmins = users.filter((u) => u.role === 'admin').length;
+  
+  // Calculate active users (logged in within last 30 days)
+  const activeUsers = users.filter((u) => {
+    if (!u.lastLoginAt) return false;
+    const lastLogin = new Date(u.lastLoginAt);
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    return lastLogin >= thirtyDaysAgo;
+  }).length;
+
   const getRoleColor = (role: string) => {
     switch (role) {
       case 'admin':
-        return 'bg-error-100 text-error-700';
+        return 'bg-red-100 text-red-700 hover:bg-red-100';
       case 'student':
-        return 'bg-primary-100 text-primary-700';
+        return 'bg-blue-100 text-blue-700 hover:bg-blue-100';
       default:
         return 'bg-gray-100 text-gray-700';
     }
@@ -57,6 +101,14 @@ export default function UsersPage() {
       .slice(0, 2);
   };
 
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-[50vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -67,6 +119,7 @@ export default function UsersPage() {
             Manage all users ({filteredUsers.length} of {users.length})
           </p>
         </div>
+        {/* Placeholder for Add User functionality */}
         <Button>
           <UserPlus className="mr-2 h-4 w-4" />
           Add User
@@ -91,7 +144,7 @@ export default function UsersPage() {
             <div>
               <p className="text-sm text-gray-600">Students</p>
               <p className="text-3xl font-bold text-gray-900 mt-1">
-                {users.filter((u) => u.role === 'student').length}
+                {totalStudents}
               </p>
             </div>
           </CardContent>
@@ -102,7 +155,7 @@ export default function UsersPage() {
             <div>
               <p className="text-sm text-gray-600">Admins</p>
               <p className="text-3xl font-bold text-gray-900 mt-1">
-                {users.filter((u) => u.role === 'admin').length}
+                {totalAdmins}
               </p>
             </div>
           </CardContent>
@@ -111,9 +164,9 @@ export default function UsersPage() {
         <Card>
           <CardContent className="pt-6">
             <div>
-              <p className="text-sm text-gray-600">Active This Month</p>
+              <p className="text-sm text-gray-600">Active (30d)</p>
               <p className="text-3xl font-bold text-gray-900 mt-1">
-                {Math.floor(users.length * 0.75)}
+                {activeUsers}
               </p>
             </div>
           </CardContent>
@@ -172,7 +225,7 @@ export default function UsersPage() {
                       <TableCell>
                         <div className="flex items-center gap-3">
                           <Avatar>
-                            <AvatarFallback className="bg-primary-100 text-primary-700">
+                            <AvatarFallback className="bg-primary/10 text-primary">
                               {getInitials(user.name)}
                             </AvatarFallback>
                           </Avatar>
@@ -181,7 +234,7 @@ export default function UsersPage() {
                               {user.name}
                             </div>
                             <div className="text-xs text-gray-500">
-                              ID: {user.id}
+                              ID: {user.id.slice(-6)}
                             </div>
                           </div>
                         </div>
@@ -204,7 +257,7 @@ export default function UsersPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <span className="font-medium text-gray-900">
+                        <span className="font-medium text-gray-900 ml-4">
                           {user.examsTaken || 0}
                         </span>
                       </TableCell>
@@ -214,7 +267,7 @@ export default function UsersPage() {
                             <Edit className="h-4 w-4" />
                           </Button>
                           <Button variant="ghost" size="icon">
-                            <Trash2 className="h-4 w-4 text-error-500" />
+                            <Trash2 className="h-4 w-4 text-red-500" />
                           </Button>
                         </div>
                       </TableCell>
@@ -225,7 +278,7 @@ export default function UsersPage() {
             </Table>
           </div>
 
-          {/* Pagination */}
+          {/* Pagination UI - Visual only for now */}
           {filteredUsers.length > 0 && (
             <div className="flex items-center justify-between border-t px-6 py-4">
               <div className="text-sm text-gray-600">
@@ -235,10 +288,7 @@ export default function UsersPage() {
                 <Button variant="outline" size="sm" disabled>
                   Previous
                 </Button>
-                <Button variant="outline" size="sm">
-                  1
-                </Button>
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" disabled>
                   Next
                 </Button>
               </div>

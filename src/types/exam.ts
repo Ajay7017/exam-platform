@@ -70,3 +70,36 @@ export interface ExamAttempt {
   percentage: number;
   rank?: number;
 }
+// ============================================
+// LEADERBOARD TYPES
+// ============================================
+
+export interface LeaderboardEntry {
+  rank: number;
+  userId: string;
+  userName: string;
+  userImage?: string | null;
+  score: number;
+  percentage: number;
+  timeTaken: number; // in seconds
+  submittedAt: string;
+  isCurrentUser?: boolean;
+}
+
+export interface LeaderboardResponse {
+  entries: LeaderboardEntry[];
+  currentUserEntry?: LeaderboardEntry;
+  totalParticipants: number;
+  examTitle?: string;
+  subjectName?: string;
+  lastUpdated: string;
+}
+
+export type LeaderboardType = 'exam' | 'global' | 'subject';
+
+export interface LeaderboardFilters {
+  type: LeaderboardType;
+  examId?: string;
+  subjectId?: string;
+  limit?: number;
+}

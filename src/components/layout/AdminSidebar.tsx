@@ -12,7 +12,9 @@ import {
   Settings,
   FolderTree,
   ChevronRight,
-  Image, // Added for Images
+  Image,
+  List, // Added for Topics
+  ClipboardList, // Added for Exams
 } from 'lucide-react';
 
 export function AdminSidebar() {
@@ -38,25 +40,30 @@ export function AdminSidebar() {
       title: 'Content Management',
       items: [
         {
-          label: 'Subjects & Topics',
+          label: 'Subjects',
           href: '/admin/subjects',
           icon: FolderTree,
+        },
+        {
+          label: 'Topics',
+          href: '/admin/topics',
+          icon: List,
         },
         {
           label: 'Question Bank',
           href: '/admin/questions',
           icon: FileQuestion,
-          badge: '2.5k',
+          
         },
         {
-          label: 'Image Upload', // NEW: Added Images
+          label: 'Image Upload',
           href: '/admin/images',
           icon: Image,
         },
         {
           label: 'Exam Management',
           href: '/admin/exams',
-          icon: BookOpen,
+          icon: ClipboardList,
         },
       ],
     },

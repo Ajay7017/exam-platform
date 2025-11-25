@@ -12,6 +12,8 @@ export default withAuth(
     const isProfilePage = req.nextUrl.pathname.startsWith('/profile')
     const isResultsPage = req.nextUrl.pathname.startsWith('/results')
     const isLeaderboardPage = req.nextUrl.pathname.startsWith('/leaderboard')
+    const isHistoryPage = req.nextUrl.pathname.startsWith('/history')
+    const isExamsPage = req.nextUrl.pathname.startsWith('/exams')
 
     // Redirect authenticated users away from login page
     if (isAuthPage && isAuth) {
@@ -40,9 +42,20 @@ export default withAuth(
     }
 
     // Protect student routes
-    if ((isDashboard || isExamPage || isProfilePage || isResultsPage || isLeaderboardPage) && !isAuth) {
+    if ((isDashboard || isExamPage || isResultsPage || isLeaderboardPage || isHistoryPage || isExamsPage) && !isAuth) {
       const callbackUrl = encodeURIComponent(req.nextUrl.pathname)
       return NextResponse.redirect(new URL(`/login?callbackUrl=${callbackUrl}`, req.url))
+    }
+
+    // ✅ NEW: Check if student needs to complete phone number
+    // Allow profile page access even without phone
+    if (isAuth && token.role === 'student' && !isProfilePage) {
+      // Note: We can't directly check database here in middleware
+      // So we'll handle this client-side with a banner/modal
+      // The token doesn't include phone info by default
+      
+      // If you want to enforce it here, you need to add phone to JWT token
+      // See the comment below for implementation
     }
 
     return NextResponse.next()
@@ -66,9 +79,11 @@ export const config = {
     '/dashboard/:path*',
     '/admin/:path*',
     '/exam/:path*',
+    '/exams/:path*',
     '/profile/:path*',
     '/results/:path*',
     '/leaderboard/:path*',
+    '/history/:path*',
     '/login',
   ],
 }

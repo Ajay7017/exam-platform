@@ -10,26 +10,38 @@ export async function GET(
   { params }: { params: { slug: string } }
 ) {
   try {
-    // Optional auth
+    // Optional auth - works for both logged in and guest users
     const session = await getServerSession(authOptions)
     const userId = session?.user?.id
     
-    // Fetch exam
+    const { slug } = params
+    
+    // Fetch exam by slug
     const exam = await prisma.exam.findUnique({
       where: { 
-        slug: params.slug,
-        isPublished: true // Only show published exams to students
+        slug,
+        isPublished: true // Only show published exams
       },
       include: {
         subject: {
-          select: { id: true, name: true, slug: true }
+          select: { name: true, slug: true }
         },
         questions: {
           include: {
             question: {
               include: {
                 topic: {
-                  select: { id: true, name: true, slug: true }
+                  select: { name: true, subject: { select: { name: true } } }
+                },
+                options: {
+                  select: {
+                    id: true,
+                    optionKey: true,
+                    text: true,
+                    imageUrl: true
+                    // CRITICAL: DO NOT include isCorrect field for students!
+                  },
+                  orderBy: { sequence: 'asc' }
                 }
               }
             }
@@ -37,10 +49,7 @@ export async function GET(
           orderBy: { sequence: 'asc' }
         },
         _count: {
-          select: {
-            attempts: true,
-            purchases: true
-          }
+          select: { attempts: true }
         }
       }
     })
@@ -52,33 +61,20 @@ export async function GET(
       )
     }
     
-    // ✅ PHASE 6: Check purchase status with active validation
+    // Check purchase status for logged-in users
     let isPurchased = false
-    let userAttempts = 0
     
-    if (userId) {
-      const [purchase, attempts] = await Promise.all([
-        prisma.purchase.findFirst({
-          where: {
-            userId,
-            examId: exam.id,
-            status: 'active',
-            validUntil: { gte: new Date() }
-          }
-        }),
-        prisma.attempt.count({
-          where: {
-            userId,
-            examId: exam.id,
-            status: 'submitted'
-          }
-        })
-      ])
+    if (userId && !exam.isFree) {
+      const purchase = await prisma.purchase.findFirst({
+        where: {
+          userId,
+          examId: exam.id,
+          status: 'active',
+          validUntil: { gte: new Date() }
+        }
+      })
       
-      isPurchased = !!purchase || exam.isFree
-      userAttempts = attempts
-    } else {
-      isPurchased = exam.isFree
+      isPurchased = !!purchase
     }
     
     // Get unique topics
@@ -86,54 +82,43 @@ export async function GET(
       exam.questions.map(eq => eq.question.topic.name)
     )]
     
-    // Topic-wise question count
-    const topicWiseCount = exam.questions.reduce((acc, eq) => {
-      const topicName = eq.question.topic.name
-      acc[topicName] = (acc[topicName] || 0) + 1
-      return acc
-    }, {} as Record<string, number>)
-    
-    // Calculate difficulty distribution
-    const difficultyCount = exam.questions.reduce((acc, eq) => {
-      const diff = eq.question.difficulty
-      acc[diff] = (acc[diff] || 0) + 1
-      return acc
-    }, {} as Record<string, number>)
-    
-    return NextResponse.json({
+    // Transform response - REMOVE SENSITIVE DATA
+    const response = {
       id: exam.id,
       title: exam.title,
       slug: exam.slug,
-      subject: {
-        id: exam.subject.id,
-        name: exam.subject.name,
-        slug: exam.subject.slug
-      },
-      thumbnail: exam.thumbnail || '/default-exam-thumbnail.jpg',
+      subject: exam.subject?.name || 'Multi-Subject',
+      subjectSlug: exam.subject?.slug || 'multi-subject',
+      thumbnail: exam.thumbnail || null,
       duration: exam.durationMin,
       totalQuestions: exam.questions.length,
       totalMarks: exam.totalMarks,
       difficulty: exam.difficulty,
       price: exam.price,
       isFree: exam.isFree,
-      isPurchased, // ✅ PHASE 6: Now includes purchase validation
+      isPurchased: isPurchased,
       instructions: exam.instructions,
       topics,
-      topicWiseCount: Object.entries(topicWiseCount).map(([topic, count]) => ({
-        topic,
-        count
-      })),
-      difficultyDistribution: {
-        easy: difficultyCount.easy || 0,
-        medium: difficultyCount.medium || 0,
-        hard: difficultyCount.hard || 0
-      },
       totalAttempts: exam._count.attempts,
-      totalPurchases: exam._count.purchases,
-      userAttempts,
-      canAttempt: isPurchased, // ✅ PHASE 6: Gate exam access
-      createdAt: exam.createdAt.toISOString()
-    })
+      // SECURITY: Transform questions to REMOVE correct answers
+      questions: exam.questions.map(eq => ({
+        id: eq.question.id,
+        statement: eq.question.statement,
+        imageUrl: eq.question.imageUrl,
+        marks: eq.question.marks,
+        difficulty: eq.question.difficulty,
+        options: eq.question.options.map(opt => ({
+          key: opt.optionKey,
+          text: opt.text,
+          imageUrl: opt.imageUrl
+          // NO isCorrect field! ✅
+        }))
+        // NO correctAnswer field! ✅
+        // NO explanation field! ✅
+      }))
+    }
+    
+    return NextResponse.json(response)
     
   } catch (error) {
     return handleApiError(error)

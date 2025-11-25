@@ -16,6 +16,8 @@ model User {
   emailVerified DateTime?
   name          String?
   image         String?
+  phone         String?   @unique  // ✅ NEW: Phone number field
+  phoneVerified Boolean   @default(false)  // ✅ NEW: For future OTP verification
   role          String    @default("student") // "student" | "admin"
   isBlocked     Boolean   @default(false)
   createdAt     DateTime  @default(now())
@@ -28,6 +30,7 @@ model User {
   leaderboard LeaderboardEntry[]
   
   @@index([email])
+  @@index([phone])  // ✅ NEW: Index for faster phone lookups
 }
 
 model Account {
@@ -153,8 +156,9 @@ model Exam {
   slug            String     @unique
   description     String?    @db.Text
   thumbnail       String?
-  subjectId       String
-  subject         Subject    @relation(fields: [subjectId], references: [id])
+  subjectId       String?
+  subject         Subject?   @relation(fields: [subjectId], references: [id])
+  isMultiSubject  Boolean    @default(false)  // NEW: Add this line
   durationMin     Int
   totalMarks      Int
   passingMarks    Int?
@@ -311,21 +315,23 @@ model Attempt {
   // Timing fields
   startedAt      DateTime  @default(now())
   submittedAt    DateTime?
-  expiresAt      DateTime  // ADD THIS
+  expiresAt      DateTime
   timeSpentSec   Int       @default(0)
   
   // Question tracking
-  totalQuestions Int       // ADD THIS
+  totalQuestions Int
   
   // Answer storage
-  answers        Json      @default("{}")  // CHANGE from just Json
+  answers        Json      @default("{}")
   
   // Scoring fields
-  correctAnswers Int       @default(0)     // REMOVE nullable (?)
-  wrongAnswers   Int       @default(0)     // REMOVE nullable (?)
-  unattempted    Int       @default(0)     // REMOVE nullable (?)
+  correctAnswers Int       @default(0)
+  wrongAnswers   Int       @default(0)
+  unattempted    Int       @default(0)
   score          Float?
   percentage     Float?
+  rank           Int?       // ✅ ADD THIS
+  percentile     Float?     // ✅ ADD THIS
   
   // Status tracking
   status         String    @default("in_progress")
@@ -333,17 +339,17 @@ model Attempt {
   // Anti-cheating
   ipAddress      String?
   tabSwitchCount Int       @default(0)
-  suspiciousFlags Json?    @default("[]")  // CHANGE from just Json?
+  suspiciousFlags Json?    @default("[]")
   
   // Metadata
   createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt      // ADD THIS
+  updatedAt      DateTime  @updatedAt
   
   leaderboardEntry LeaderboardEntry?
   
   @@index([userId, examId])
   @@index([status])
-  @@index([expiresAt])  // ADD THIS
+  @@index([expiresAt])
 }
 
 model LeaderboardEntry {
@@ -356,12 +362,13 @@ model LeaderboardEntry {
   attempt     Attempt  @relation(fields: [attemptId], references: [id])
   score       Float
   percentage  Float
-  rank        Int?
+  rank        Int      // ✅ REMOVE the '?' to make it required
   timeTaken   Int      // seconds
   submittedAt DateTime
   
   @@unique([examId, userId])
-  @@index([examId, score, timeTaken])
+  @@index([examId, rank])  // ✅ CHANGE from [examId, score, timeTaken]
+  @@index([userId])        // ✅ ADD THIS for user-specific queries
 }
 
 // ============================================

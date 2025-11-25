@@ -2,7 +2,9 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { signOut } from 'next-auth/react';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 import {
   LayoutDashboard,
   BookOpen,
@@ -11,6 +13,7 @@ import {
   User,
   Clock,
   ChevronRight,
+  LogOut,
 } from 'lucide-react';
 
 export function StudentSidebar() {
@@ -22,17 +25,17 @@ export function StudentSidebar() {
       items: [
         {
           label: 'Dashboard',
-          href: '/dashboard',  // ✅ FIXED: Removed /student prefix
+          href: '/dashboard',
           icon: LayoutDashboard,
         },
         {
           label: 'Browse Exams',
-          href: '/exams',  // ✅ FIXED: Removed /student prefix
+          href: '/exams',
           icon: BookOpen,
         },
         {
           label: 'My Results',
-          href: '/results',  // ✅ FIXED: Removed /student prefix
+          href: '/results',
           icon: Trophy,
         },
       ],
@@ -42,27 +45,31 @@ export function StudentSidebar() {
       items: [
         {
           label: 'Leaderboard',
-          href: '/leaderboard',  // ✅ FIXED: Removed /student prefix
+          href: '/leaderboard',
           icon: Award,
         },
         {
           label: 'Practice History',
-          href: '/history',  // ✅ FIXED: Removed /student prefix
+          href: '/history',
           icon: Clock,
         },
         {
           label: 'Profile',
-          href: '/profile',  // ✅ FIXED: Removed /student prefix
+          href: '/profile',
           icon: User,
         },
       ],
     },
   ];
 
+  const handleLogout = async () => {
+    await signOut({ callbackUrl: '/login' });
+  };
+
   return (
     <aside className="fixed left-0 top-16 hidden h-[calc(100vh-4rem)] w-64 border-r bg-white lg:block">
       <div className="flex h-full flex-col overflow-y-auto p-4">
-        <nav className="space-y-6">
+        <nav className="flex-1 space-y-6">
           {navGroups.map((group, idx) => (
             <div key={idx}>
               {group.title && (
@@ -99,6 +106,18 @@ export function StudentSidebar() {
             </div>
           ))}
         </nav>
+
+        {/* Logout Button at Bottom */}
+        <div className="pt-4 border-t">
+          <Button
+            variant="ghost"
+            className="w-full justify-start text-gray-700 hover:bg-red-50 hover:text-red-600"
+            onClick={handleLogout}
+          >
+            <LogOut className="h-5 w-5 mr-3" />
+            Logout
+          </Button>
+        </div>
       </div>
     </aside>
   );

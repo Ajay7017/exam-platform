@@ -27,6 +27,7 @@ export async function GET(request: NextRequest) {
     // Build where clause - only show published exams
     const where: any = { isPublished: true }
     
+    // FIXED: Handle subject filter properly for both single and multi-subject exams
     if (subject) {
       where.subject = { slug: subject }
     }
@@ -57,7 +58,7 @@ export async function GET(request: NextRequest) {
               question: {
                 include: {
                   topic: {
-                    select: { name: true }
+                    select: { name: true, subject: { select: { name: true } } }
                   }
                 }
               }
@@ -100,12 +101,16 @@ export async function GET(request: NextRequest) {
         exam.questions.map(eq => eq.question.topic.name)
       )]
       
+      // FIXED: Handle multi-subject exams
+      const subjectName = exam.subject?.name || 'Multi-Subject'
+      const subjectSlug = exam.subject?.slug || 'multi-subject'
+      
       return {
         id: exam.id,
         title: exam.title,
         slug: exam.slug,
-        subject: exam.subject.name,
-        subjectSlug: exam.subject.slug,
+        subject: subjectName,
+        subjectSlug: subjectSlug,
         thumbnail: exam.thumbnail || '/default-exam-thumbnail.jpg',
         duration: exam.durationMin,
         totalQuestions: exam.questions.length,

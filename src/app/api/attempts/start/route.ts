@@ -132,7 +132,7 @@ export async function POST(request: NextRequest) {
       examId: exam.id,
       examTitle: exam.title,
       examSlug: exam.slug,
-      subject: exam.subject.name,
+      subject: exam.subject?.name || 'Multi-Subject',
       duration: exam.durationMin,
       totalQuestions: questions.length,
       totalMarks: exam.totalMarks,

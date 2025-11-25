@@ -11,7 +11,9 @@ export const createExamSchema = z.object({
     .max(200, 'Slug must be less than 200 characters')
     .regex(/^[a-z0-9-]+$/, 'Slug can only contain lowercase letters, numbers, and hyphens'),
   
-  subjectId: z.string().cuid('Invalid subject ID'),
+  subjectId: z.string().cuid('Invalid subject ID').optional(),  // CHANGED: Made optional
+  
+  isMultiSubject: z.boolean().optional().default(false),  // NEW
   
   durationMin: z.number()
     .int('Duration must be a whole number')
@@ -19,7 +21,7 @@ export const createExamSchema = z.object({
     .max(300, 'Duration cannot exceed 300 minutes'),
   
   questionIds: z.array(z.string().cuid())
-    .min(2, 'Exam must have at least 10 questions')
+    .min(2, 'Exam must have at least 2 questions')
     .max(200, 'Exam cannot have more than 200 questions'),
   
   price: z.number()
@@ -36,8 +38,23 @@ export const createExamSchema = z.object({
   
   difficulty: z.enum(['easy', 'medium', 'hard']).optional().default('medium'),
   
-  thumbnail: z.string().url().optional()
-})
+  thumbnail: z.preprocess(
+    (val) => (!val || val === '' ? undefined : val),
+    z.string().url().optional()
+  )
+}).refine(
+  (data) => {
+    // If single subject mode, subjectId is required
+    if (!data.isMultiSubject && !data.subjectId) {
+      return false
+    }
+    return true
+  },
+  {
+    message: 'Subject is required for single-subject exams',
+    path: ['subjectId']
+  }
+)
 
 export const updateExamSchema = createExamSchema.partial().extend({
   id: z.string().cuid()

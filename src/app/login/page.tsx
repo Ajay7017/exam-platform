@@ -9,7 +9,7 @@ import { useSearchParams } from 'next/navigation'
 export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const searchParams = useSearchParams()
-  const callbackUrl = searchParams.get('callbackUrl') || '/dashboard'
+  const callbackUrl = searchParams.get('callbackUrl') || '/auth/redirect'
 
   const handleGoogleSignIn = async () => {
     setIsLoading(true)

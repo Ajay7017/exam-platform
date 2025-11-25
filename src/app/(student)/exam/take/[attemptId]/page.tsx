@@ -1,172 +1,274 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+'use client'
 
-// Mock data for demo - replace with actual API calls
-const mockExamData = {
-  attemptId: 'attempt_123',
-  examTitle: 'Physics Mock Test 1',
-  duration: 60,
-  totalQuestions: 10,
-  expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-  allowReview: true,
-  questions: Array.from({ length: 10 }, (_, i) => ({
-    id: `q${i + 1}`,
-    sequence: i + 1,
-    statement: `Question ${i + 1}: What is the fundamental principle being tested here?`,
-    imageUrl: null,
-    topic: ['Mechanics', 'Thermodynamics', 'Optics'][i % 3],
-    marks: 4,
-    negativeMarks: 1,
-    difficulty: ['easy', 'medium', 'hard'][i % 3],
-    options: [
-      { key: 'A', text: 'First option answer', imageUrl: null },
-      { key: 'B', text: 'Second option answer', imageUrl: null },
-      { key: 'C', text: 'Third option answer', imageUrl: null },
-      { key: 'D', text: 'Fourth option answer', imageUrl: null },
-    ]
-  }))
-};
+import React, { useEffect, useState, useCallback, useRef } from 'react'
+import { useParams, useRouter } from 'next/navigation'
+import { toast } from 'sonner'
+import { Loader2 } from 'lucide-react'
+
+interface Option {
+  key: string
+  text: string
+  imageUrl: string | null
+}
+
+interface Question {
+  id: string
+  sequence: number
+  statement: string
+  imageUrl: string | null
+  topic: string
+  marks: number
+  negativeMarks: number
+  difficulty: 'easy' | 'medium' | 'hard'
+  options: Option[]
+}
+
+interface ExamData {
+  attemptId: string
+  examId: string
+  examTitle: string
+  duration: number
+  totalQuestions: number
+  expiresAt: string
+  allowReview: boolean
+  questions: Question[]
+}
 
 export default function ExamInterface() {
-  const [exam] = useState(mockExamData);
-  const [currentQuestion, setCurrentQuestion] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, string | null>>({});
-  const [markedForReview, setMarkedForReview] = useState<Record<string, boolean>>({});
-  const [timeRemaining, setTimeRemaining] = useState(0);
-  const [submitting, setSubmitting] = useState(false);
-  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
-  const saveTimerRef = useRef<NodeJS.Timeout>();
+  const params = useParams()
+  const router = useRouter()
+  const attemptId = params.attemptId as string
 
-  // Initialize timer
+  const [exam, setExam] = useState<ExamData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [currentQuestion, setCurrentQuestion] = useState(0)
+  const [answers, setAnswers] = useState<Record<string, string | null>>({})
+  const [markedForReview, setMarkedForReview] = useState<Record<string, boolean>>({})
+  const [timeRemaining, setTimeRemaining] = useState(0)
+  const [submitting, setSubmitting] = useState(false)
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false)
+  const saveTimerRef = useRef<NodeJS.Timeout>()
+
+  // Fetch exam data on mount
   useEffect(() => {
-    const expiresAt = new Date(exam.expiresAt).getTime();
-    const now = Date.now();
-    const remaining = Math.max(0, Math.floor((expiresAt - now) / 1000));
-    setTimeRemaining(remaining);
+    fetchExamData()
+  }, [attemptId])
+
+  const fetchExamData = async () => {
+  try {
+    setLoading(true)
+    
+    // Fetch EXISTING attempt data (not starting new)
+    const res = await fetch(`/api/attempts/${attemptId}`)
+
+    if (!res.ok) {
+      const data = await res.json()
+      throw new Error(data.error || 'Failed to load exam')
+    }
+
+    const data = await res.json()
+    setExam(data)
+
+    // Load saved answers if any
+    if (data.savedAnswers && typeof data.savedAnswers === 'object') {
+      setAnswers(data.savedAnswers)
+    }
+
+    // Initialize timer
+    const expiresAt = new Date(data.expiresAt).getTime()
+    const now = Date.now()
+    const remaining = Math.max(0, Math.floor((expiresAt - now) / 1000))
+    setTimeRemaining(remaining)
+
+  } catch (error: any) {
+    console.error('Failed to load exam:', error)
+    toast.error(error.message || 'Failed to load exam')
+    router.push('/exams')
+  } finally {
+    setLoading(false)
+  }
+}
+
+  // Timer countdown
+  useEffect(() => {
+    if (timeRemaining === 0 || !exam) return
 
     const interval = setInterval(() => {
       setTimeRemaining(prev => {
         if (prev <= 1) {
-          handleSubmit(true);
-          return 0;
+          handleSubmit(true)
+          return 0
         }
-        return prev - 1;
-      });
-    }, 1000);
+        return prev - 1
+      })
+    }, 1000)
 
-    return () => clearInterval(interval);
-  }, []);
+    return () => clearInterval(interval)
+  }, [timeRemaining, exam])
 
-  // Auto-save every 10 seconds
+  // Auto-save every 30 seconds
   useEffect(() => {
+    if (!exam) return
+
     saveTimerRef.current = setInterval(() => {
-      saveAnswers();
-    }, 10000);
+      saveAnswers()
+    }, 30000) // 30 seconds
 
     return () => {
       if (saveTimerRef.current) {
-        clearInterval(saveTimerRef.current);
+        clearInterval(saveTimerRef.current)
       }
-    };
-  }, [answers, markedForReview]);
+    }
+  }, [answers, markedForReview, exam])
 
   // Anti-cheating: detect tab switching
   useEffect(() => {
+    if (!exam) return
+
     const handleVisibilityChange = () => {
       if (document.hidden) {
         fetch(`/api/attempts/${exam.attemptId}/violation`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ type: 'tab_switch' })
-        }).catch(console.error);
+        }).catch(console.error)
       }
-    };
+    }
 
     const handleContextMenu = (e: MouseEvent) => {
-      e.preventDefault();
-      return false;
-    };
+      e.preventDefault()
+      return false
+    }
 
     const handleCopy = (e: ClipboardEvent) => {
-      e.preventDefault();
-      return false;
-    };
+      e.preventDefault()
+      return false
+    }
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    document.addEventListener('contextmenu', handleContextMenu);
-    document.addEventListener('copy', handleCopy);
-    document.addEventListener('cut', handleCopy);
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    document.addEventListener('contextmenu', handleContextMenu)
+    document.addEventListener('copy', handleCopy)
+    document.addEventListener('cut', handleCopy)
 
     return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      document.removeEventListener('contextmenu', handleContextMenu);
-      document.removeEventListener('copy', handleCopy);
-      document.removeEventListener('cut', handleCopy);
-    };
-  }, [exam.attemptId]);
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      document.removeEventListener('contextmenu', handleContextMenu)
+      document.removeEventListener('copy', handleCopy)
+      document.removeEventListener('cut', handleCopy)
+    }
+  }, [exam])
 
   const saveAnswers = async () => {
+    if (!exam) return
+
     try {
       const answersToSave = Object.entries(answers).map(([questionId, selectedOption]) => ({
         questionId,
         selectedOption,
         markedForReview: markedForReview[questionId] || false
-      }));
+      }))
 
-      // In production: await fetch('/api/attempts/.../save-batch', ...)
-      console.log('Auto-saving:', answersToSave.length, 'answers');
+      await fetch(`/api/attempts/${exam.attemptId}/save-batch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answers: answersToSave })
+      })
+
+      console.log('Auto-saved:', answersToSave.length, 'answers')
     } catch (error) {
-      console.error('Auto-save failed:', error);
+      console.error('Auto-save failed:', error)
     }
-  };
+  }
 
   const handleOptionSelect = (questionId: string, optionKey: string) => {
     setAnswers(prev => ({
       ...prev,
       [questionId]: prev[questionId] === optionKey ? null : optionKey
-    }));
-  };
+    }))
+  }
 
   const handleMarkForReview = (questionId: string) => {
     setMarkedForReview(prev => ({
       ...prev,
       [questionId]: !prev[questionId]
-    }));
-  };
+    }))
+  }
 
   const handleSubmit = async (autoSubmit = false) => {
+    if (!exam) return
+
     if (!autoSubmit) {
-      setShowSubmitConfirm(true);
-      return;
+      setShowSubmitConfirm(true)
+      return
     }
 
-    setSubmitting(true);
+    setSubmitting(true)
 
     try {
-      await saveAnswers();
+      // Save one last time
+      await saveAnswers()
       
-      // In production: const result = await fetch('/api/attempts/.../submit', {method: 'POST'})
-      console.log('Exam submitted!');
+      // Submit exam
+      const res = await fetch(`/api/attempts/${exam.attemptId}/submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      })
+
+      if (!res.ok) {
+        throw new Error('Failed to submit exam')
+      }
+
+      const result = await res.json()
+      
+      toast.success('Exam submitted successfully!')
       
       // Redirect to results
-      alert('Exam submitted! Redirecting to results...');
-      // window.location.href = `/results/${exam.attemptId}`;
-    } catch (error) {
-      alert('Failed to submit exam. Please try again.');
-      setSubmitting(false);
+      router.push(`/results/${exam.attemptId}`)
+    } catch (error: any) {
+      console.error('Submission error:', error)
+      toast.error(error.message || 'Failed to submit exam. Please try again.')
+      setSubmitting(false)
     }
-  };
+  }
 
   const formatTime = (seconds: number) => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
+    const hours = Math.floor(seconds / 3600)
+    const minutes = Math.floor((seconds % 3600) / 60)
+    const secs = seconds % 60
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+  }
 
-  const question = exam.questions[currentQuestion];
-  const answeredCount = Object.values(answers).filter(a => a !== null).length;
-  const reviewCount = Object.values(markedForReview).filter(Boolean).length;
-  const visitedQuestions = new Set(Object.keys(answers).concat(Object.keys(markedForReview)));
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-blue-600 mx-auto mb-4" />
+          <p className="text-gray-600">Loading exam...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!exam) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <p className="text-gray-600 mb-4">Exam not found</p>
+          <button
+            onClick={() => router.push('/exams')}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Back to Exams
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  const question = exam.questions[currentQuestion]
+  const answeredCount = Object.values(answers).filter(a => a !== null).length
+  const reviewCount = Object.values(markedForReview).filter(Boolean).length
+  const visitedQuestions = new Set(Object.keys(answers).concat(Object.keys(markedForReview)))
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -224,7 +326,7 @@ export default function ExamInterface() {
                     {question.difficulty}
                   </span>
                 </div>
-                <div className="text-lg leading-relaxed" dangerouslySetInnerHTML={{ __html: question.statement }} />
+                <div className="text-lg leading-relaxed whitespace-pre-wrap">{question.statement}</div>
               </div>
             </div>
             
@@ -250,15 +352,15 @@ export default function ExamInterface() {
                 }`}
               >
                 <div className="flex items-start gap-3">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg transition-colors ${
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg flex-shrink-0 transition-colors ${
                     answers[question.id] === option.key
                       ? 'bg-blue-500 text-white'
                       : 'bg-gray-200 text-gray-700'
                   }`}>
                     {option.key}
                   </div>
-                  <div className="flex-1 pt-1">
-                    <div dangerouslySetInnerHTML={{ __html: option.text }} />
+                  <div className="flex-1 pt-2">
+                    <div className="whitespace-pre-wrap">{option.text}</div>
                     {option.imageUrl && (
                       <img 
                         src={option.imageUrl} 
@@ -284,18 +386,20 @@ export default function ExamInterface() {
 
           {/* Navigation */}
           <div className="flex items-center justify-between mt-8 pt-6 border-t">
-            <button
-              onClick={() => handleMarkForReview(question.id)}
-              className={`px-5 py-2 rounded-lg font-medium transition ${
-                markedForReview[question.id]
-                  ? 'bg-yellow-100 text-yellow-800 border-2 border-yellow-500'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              {markedForReview[question.id] ? '★ Marked for Review' : '☆ Mark for Review'}
-            </button>
+            {exam.allowReview && (
+              <button
+                onClick={() => handleMarkForReview(question.id)}
+                className={`px-5 py-2 rounded-lg font-medium transition ${
+                  markedForReview[question.id]
+                    ? 'bg-yellow-100 text-yellow-800 border-2 border-yellow-500'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {markedForReview[question.id] ? '★ Marked for Review' : '☆ Mark for Review'}
+              </button>
+            )}
 
-            <div className="flex gap-3">
+            <div className="flex gap-3 ml-auto">
               <button
                 onClick={() => setCurrentQuestion(prev => Math.max(0, prev - 1))}
                 disabled={currentQuestion === 0}
@@ -367,15 +471,15 @@ export default function ExamInterface() {
           {/* Question Grid */}
           <div className="grid grid-cols-5 gap-2">
             {exam.questions.map((q, index) => {
-              const isAnswered = answers[q.id] !== null && answers[q.id] !== undefined;
-              const isMarked = markedForReview[q.id];
-              const isCurrent = index === currentQuestion;
-              const isVisited = visitedQuestions.has(q.id);
+              const isAnswered = answers[q.id] !== null && answers[q.id] !== undefined
+              const isMarked = markedForReview[q.id]
+              const isCurrent = index === currentQuestion
+              const isVisited = visitedQuestions.has(q.id)
               
-              let bgColor = 'bg-gray-300';
-              if (isMarked) bgColor = 'bg-yellow-500';
-              else if (isAnswered) bgColor = 'bg-green-500';
-              else if (isVisited) bgColor = 'bg-red-500';
+              let bgColor = 'bg-gray-300'
+              if (isMarked) bgColor = 'bg-yellow-500'
+              else if (isAnswered) bgColor = 'bg-green-500'
+              else if (isVisited) bgColor = 'bg-red-500'
 
               return (
                 <button
@@ -387,7 +491,7 @@ export default function ExamInterface() {
                 >
                   {index + 1}
                 </button>
-              );
+              )
             })}
           </div>
         </div>
@@ -419,8 +523,8 @@ export default function ExamInterface() {
               </button>
               <button
                 onClick={() => {
-                  setShowSubmitConfirm(false);
-                  handleSubmit(true);
+                  setShowSubmitConfirm(false)
+                  handleSubmit(true)
                 }}
                 className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
               >
@@ -431,5 +535,5 @@ export default function ExamInterface() {
         </div>
       )}
     </div>
-  );
+  )
 }

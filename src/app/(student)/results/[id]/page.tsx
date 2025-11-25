@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { LeaderboardCard } from '@/components/student/LeaderboardCard';
 import {
   Download,
   Share2,
@@ -230,10 +231,11 @@ export default function ResultPage() {
         </Card>
       </div>
 
-      {/* Tabs */}
+      {/* Tabs - UPDATED to include Leaderboard */}
       <Tabs defaultValue="summary" className="space-y-4">
         <TabsList>
           <TabsTrigger value="summary">Summary</TabsTrigger>
+          <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger>
           <TabsTrigger value="solutions">Solutions</TabsTrigger>
         </TabsList>
 
@@ -305,6 +307,16 @@ export default function ResultPage() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        {/* ✅ NEW: Leaderboard Tab */}
+        <TabsContent value="leaderboard" className="space-y-4">
+          <LeaderboardCard 
+            type="exam" 
+            examId={result.examId} 
+            limit={25}
+            showTitle={true}
+          />
         </TabsContent>
 
         <TabsContent value="solutions" className="space-y-4">

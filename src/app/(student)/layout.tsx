@@ -1,5 +1,6 @@
 import { Navbar } from '@/components/layout/Navbar';
 import { StudentSidebar } from '@/components/layout/StudentSidebar';
+import { PhoneRequiredBanner } from '@/components/layout/PhoneRequiredBanner';
 
 export default function StudentLayout({
   children,
@@ -9,6 +10,7 @@ export default function StudentLayout({
   return (
     <div className="flex min-h-screen flex-col">
       <Navbar variant="student" />
+      <PhoneRequiredBanner />
       <div className="flex flex-1">
         <StudentSidebar />
         <main className="flex-1 lg:ml-64">

@@ -10,12 +10,14 @@ declare module 'next-auth' {
       image?: string | null
       role: string
       isBlocked: boolean
+      phone?: string | null  // ✅ NEW: Added phone
     }
   }
 
   interface User {
     role: string
     isBlocked: boolean
+    phone?: string | null  // ✅ NEW: Added phone
   }
 }
 
@@ -24,5 +26,6 @@ declare module 'next-auth/jwt' {
     id: string
     role: string
     isBlocked: boolean
+    phone?: string | null  // ✅ NEW: Added phone
   }
 }

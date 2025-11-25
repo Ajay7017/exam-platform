@@ -15,6 +15,16 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
   Table,
   TableBody,
   TableCell,
@@ -42,6 +52,11 @@ export default function AdminSubjectsPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null)
   const [submitting, setSubmitting] = useState(false)
+
+  // Delete confirmation state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [subjectToDelete, setSubjectToDelete] = useState<Subject | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   // Form state
   const [formData, setFormData] = useState({
@@ -154,21 +169,25 @@ export default function AdminSubjectsPage() {
     }
   }
 
-  // Delete subject
-  const handleDelete = async (subject: Subject) => {
+  // Confirm delete
+  const confirmDelete = (subject: Subject) => {
     if (subject.topicsCount > 0 || subject.examsCount > 0) {
       toast.error(
         `Cannot delete subject with ${subject.topicsCount} topics and ${subject.examsCount} exams`
       )
       return
     }
+    setSubjectToDelete(subject)
+    setDeleteDialogOpen(true)
+  }
 
-    if (!confirm(`Are you sure you want to delete "${subject.name}"?`)) {
-      return
-    }
+  // Delete subject
+  const handleDelete = async () => {
+    if (!subjectToDelete) return
 
+    setDeleting(true)
     try {
-      const response = await fetch(`/api/admin/subjects/${subject.id}`, {
+      const response = await fetch(`/api/admin/subjects/${subjectToDelete.id}`, {
         method: 'DELETE',
       })
 
@@ -178,10 +197,14 @@ export default function AdminSubjectsPage() {
       }
 
       toast.success('Subject deleted successfully')
+      setDeleteDialogOpen(false)
+      setSubjectToDelete(null)
       fetchSubjects()
     } catch (error: any) {
       console.error('Error deleting subject:', error)
       toast.error(error.message || 'Failed to delete subject')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -262,7 +285,7 @@ export default function AdminSubjectsPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleDelete(subject)}
+                          onClick={() => confirmDelete(subject)}
                           disabled={subject.topicsCount > 0 || subject.examsCount > 0}
                         >
                           <Trash2 className="w-4 h-4 text-red-600" />
@@ -368,6 +391,36 @@ export default function AdminSubjectsPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Subject?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <strong>&quot;{subjectToDelete?.name}&quot;</strong>? 
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={deleting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

@@ -108,9 +108,49 @@ export async function POST(
     // 4. Calculate percentage
     const percentage = (score / attempt.exam.totalMarks) * 100
 
-    // 5. Update attempt with results
+    // 5. Calculate rank and percentile BEFORE updating attempt
     const submittedAt = new Date()
-    
+
+    // Get all existing completed attempts for this exam
+    const allCompletedAttempts = await prisma.leaderboardEntry.findMany({
+      where: {
+        examId: attempt.examId,
+      },
+      select: {
+        userId: true,
+        score: true,
+        timeTaken: true,
+      }
+    })
+
+    // Add current user's attempt to the list
+    const allAttemptsList = [
+      ...allCompletedAttempts,
+      {
+        userId: attempt.userId,
+        score,
+        timeTaken
+      }
+    ]
+
+    // Sort: Higher score first, then faster time
+    allAttemptsList.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score
+      return a.timeTaken - b.timeTaken
+    })
+
+    // Find current user's rank
+    const userRank = allAttemptsList.findIndex(
+      entry => entry.userId === attempt.userId && entry.score === score && entry.timeTaken === timeTaken
+    ) + 1
+
+    // Calculate percentile (what % of students did you beat?)
+    const totalAttempts = allAttemptsList.length
+    const percentile = totalAttempts > 1 
+      ? ((totalAttempts - userRank) / (totalAttempts - 1)) * 100 
+      : 100
+
+    // 6. Update attempt with results (INCLUDING rank and percentile)
     await prisma.attempt.update({
       where: { id: attemptId },
       data: {
@@ -121,34 +161,13 @@ export async function POST(
         correctAnswers: correctCount,
         wrongAnswers: wrongCount,
         unattempted,
-        timeSpentSec: timeTaken
+        timeSpentSec: timeTaken,
+        rank: userRank,           // ✅ SAVING RANK
+        percentile: percentile    // ✅ SAVING PERCENTILE
       }
     })
 
-    // 6. Calculate rank
-    const higherScores = await prisma.attempt.count({
-      where: {
-        examId: attempt.examId,
-        status: 'completed',
-        OR: [
-          { score: { gt: score } },
-          { 
-            score: score,
-            timeSpentSec: { lt: timeTaken }
-          }
-        ]
-      }
-    })
-    const rank = higherScores + 1
-
-    const totalAttempts = await prisma.attempt.count({
-      where: {
-        examId: attempt.examId,
-        status: 'completed'
-      }
-    })
-
-    // 7. Create/update leaderboard entry
+    // 7. Create/update leaderboard entry with rank
     await prisma.leaderboardEntry.upsert({
       where: {
         examId_userId: {
@@ -162,7 +181,7 @@ export async function POST(
         attemptId: attempt.id,
         score,
         percentage,
-        rank,  // ✅ ADD THIS
+        rank: userRank,
         timeTaken,
         submittedAt
       },
@@ -170,13 +189,35 @@ export async function POST(
         attemptId: attempt.id,
         score,
         percentage,
-        rank,  // ✅ ADD THIS
+        rank: userRank,
         timeTaken,
         submittedAt
       }
     })
 
-    // 8. Build topic-wise performance
+    // 8. Update ranks for ALL users (because new submission might affect others' ranks)
+    // This runs in background after response is sent
+    prisma.$transaction(async (tx) => {
+      const allEntries = await tx.leaderboardEntry.findMany({
+        where: { examId: attempt.examId },
+        orderBy: [
+          { score: 'desc' },
+          { timeTaken: 'asc' }
+        ]
+      })
+
+      // Batch update ranks
+      for (let i = 0; i < allEntries.length; i++) {
+        await tx.leaderboardEntry.update({
+          where: { id: allEntries[i].id },
+          data: { rank: i + 1 }
+        })
+      }
+    }).catch(err => {
+      console.error('Failed to update all ranks:', err)
+    })
+
+    // 9. Build topic-wise performance
     const topicWisePerformance = Array.from(topicStats.entries()).map(
       ([topic, stats]) => ({
         topic,
@@ -187,7 +228,7 @@ export async function POST(
       })
     )
 
-    // 9. Return immediate results
+    // 10. Return immediate results (NOW WITH RANK & PERCENTILE)
     return NextResponse.json({
       attemptId: attempt.id,
       examId: attempt.examId,
@@ -199,7 +240,8 @@ export async function POST(
       wrongAnswers: wrongCount,
       unattempted,
       timeTaken,
-      rank,
+      rank: userRank,                              // ✅ NOW INCLUDED
+      percentile: parseFloat(percentile.toFixed(2)), // ✅ NOW INCLUDED
       totalAttempts,
       submittedAt: submittedAt.toISOString(),
       topicWisePerformance
